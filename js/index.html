@@ -1,0 +1,23 @@
+<html>
+    <head>
+        <meta charset="utf-8"/>
+        <title>Animate Anything</title>
+        <script type="text/javascript" src="lib/animate-anything.js"></script>
+        <script type="text/javascript">
+            var aa = AnimateAnything;
+            
+            var firstAnimation = aa.loop(0,2,
+                aa.anim(0,1, t=> { document.body.textContent = "testing"; }),
+                aa.anim(1,2, t=> { document.body.textContent = "wow!"; })
+            );
+            
+            var secondAnimation = aa.loop(0,1, t=> document.body.style.fontSize = 20+20*(.5+.5*Math.sin(t*3.14159*2)) + 'px');
+            
+            aa.play(firstAnimation);
+            aa.play(secondAnimation);
+        </script>
+    </head>
+    <body>
+
+    </body>
+</html>
