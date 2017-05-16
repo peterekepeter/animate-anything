@@ -29,5 +29,8 @@
     <ClCompile Include="UnitTestAnimationNodes.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="UnitTestAnimationContainer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -11,15 +11,16 @@ namespace UnitTestAnimateAnything
 	{
 	public:
 
-		using Action = AnimateAnything::AnimationAction<double>;
+		using ActionVoid = AnimateAnything::AnimationActionVoid<double>;
+		using Action = AnimateAnything::AnimationActionTime<double>;
 		using After = AnimateAnything::AnimationAfter<double>;
 		using Before = AnimateAnything::AnimationBefore<double>;
 		using Between = AnimateAnything::AnimationBetween<double>;
-		using Offset = AnimateAnything::AnimationOffset<double>;
+		using Seek = AnimateAnything::AnimationSeek<double>;
 		using Event = AnimateAnything::AnimationEvent<double>;
-		using Timestretch = AnimateAnything::AnimationTimestretch<double>;
-		using Transform = AnimateAnything::AnimationTransform<double>;
-		using Composite = AnimateAnything::AnimationComposite<double>;
+		using Stretch = AnimateAnything::AnimationStretch<double>;
+		using TimeTransform = AnimateAnything::AnimationTimeTransform<double>;
+		using Parallel = AnimateAnything::AnimationParallel<double>;
 
 		TEST_METHOD(TestAnimationActionRunsLambdas)
 		{
@@ -28,6 +29,16 @@ namespace UnitTestAnimateAnything
 			animation.PlaySimple(1);
 			Assert::AreEqual(2.0, value, 0.01, L"Value should be 2.0 (t*2)");
 		}
+
+
+		TEST_METHOD(TestAnimationActionRunsVoidLambdas)
+		{
+			double value = 0;
+			ActionVoid animation([&]() { value = 2.0; });
+			animation.PlaySimple(1);
+			Assert::AreEqual(2.0, value, 0.01, L"Value should be 2.0 (t*2)");
+		}
+
 
 
 		TEST_METHOD(TestAnimationAfterConditionalExecution)
@@ -94,11 +105,11 @@ namespace UnitTestAnimateAnything
 			animation.PlaySimple(3.0); Assert::AreEqual(4.0, value, 0.01, L"Value should be 4.0");
 		}
 
-		TEST_METHOD(TestAnimationOffsetLogic)
+		TEST_METHOD(TestAnimationSeekLogic)
 		{
 			double value = 0;
 			Action action([&](double t) { value = t * 2.0; });
-			Offset animation(1.0, action);
+			Seek animation(1.0, action);
 			animation.PlaySimple(1); Assert::AreEqual(4.0, value, 0.01, L"Value should be 4.0 ((t+1)*2)");
 			animation.PlaySimple(2); Assert::AreEqual(6.0, value, 0.01, L"Value should be 6.0 ((t+1)*2)");
 		}
@@ -141,30 +152,30 @@ namespace UnitTestAnimateAnything
 			}
 		}
 
-		TEST_METHOD(TestAnimationTimestretchLogic)
+		TEST_METHOD(TestAnimationStretchLogic)
 		{
 			double value = 0;
 			Action action([&](double t) { value = t * 2.0; });
-			Timestretch animation(0.5, action);
+			Stretch animation(0.5, action);
 			animation.PlaySimple(1); Assert::AreEqual(1.0, value, 0.01, L"Value should be 1.0 ((t*.5)*2)");
 			animation.PlaySimple(2); Assert::AreEqual(2.0, value, 0.01, L"Value should be 2.0 ((t*.5)*2)");
 		}
 
-		TEST_METHOD(TestAnimationTransformLogic)
+		TEST_METHOD(TestAnimationTimeTransformLogic)
 		{
 			double value = 0;
 			Action action([&](double t) { value = t * 2.0; });
-			Transform animation([](double t) { return t*.5 + 2.0; }, action);
+			TimeTransform animation([](double t) { return t*.5 + 2.0; }, action);
 			animation.PlaySimple(2); Assert::AreEqual(6.0, value, 0.01, L"Value should be 6.0 ((t*.5+2.0)*2)");
 			animation.PlaySimple(4); Assert::AreEqual(8.0, value, 0.01, L"Value should be 8.0 ((t*.5+2.0)*2)");
 		}
 
-		TEST_METHOD(TestCompositeAnimationConstructor)
+		TEST_METHOD(TestAnimationParallelConstructor)
 		{
 			double x = 0, y = 1;
 			Action action1([&](double t) { x = t * 2.0; });
 			Action action2([&](double t) { y = t * 3.0; });
-			Composite animation(action1, action2);
+			Parallel animation(action1, action2);
 			animation.PlaySimple(2.0); 
 			Assert::AreEqual(4.0, x, 0.01);
 			Assert::AreEqual(6.0, y, 0.01);
@@ -173,12 +184,12 @@ namespace UnitTestAnimateAnything
 			Assert::AreEqual(12.0, y, 0.01);
 		}
 
-		TEST_METHOD(TestCompositeAnimationAppend)
+		TEST_METHOD(TestAnimationParallelAppend)
 		{
 			double x = 0, y = 1;
 			Action action1([&](double t) { x = t * 2.0; });
 			Action action2([&](double t) { y = t * 3.0; });
-			Composite animation;
+			Parallel animation;
 			animation.Add(action1);
 			animation.PlaySimple(2.0);
 			Assert::AreEqual(4.0, x, 0.01);
@@ -187,5 +198,6 @@ namespace UnitTestAnimateAnything
 			Assert::AreEqual(8.0, x, 0.01);
 			Assert::AreEqual(12.0, y, 0.01);
 		}
+
 	};
 }

@@ -17,14 +17,24 @@ namespace AnimateAnything
 		virtual ~IAnimation() { }; // polymorphic class
 	};
 
-	// Animation that contains a lambda
-	template<typename NumericType> class AnimationAction : public IAnimation<NumericType>
+	// Animation that contains a lambda with no parameters
+	template<typename NumericType> class AnimationActionVoid : public IAnimation<NumericType>
+	{
+	public:
+		std::function<void(void)> Action;
+		void Play(NumericType t, NumericType t0) override { Action(); }
+		AnimationActionVoid(std::function<void(void)> action) : Action(action) { };
+		~AnimationActionVoid() { };
+	};
+
+	// Animation that contains a lambda with time
+	template<typename NumericType> class AnimationActionTime : public IAnimation<NumericType>
 	{
 	public:
 		std::function<void(NumericType)> Action;
 		void Play(NumericType t, NumericType t0) override { Action(t); }
-		AnimationAction(std::function<void(NumericType)> action) : Action(action) { };
-		~AnimationAction() { };
+		AnimationActionTime(std::function<void(NumericType)> action) : Action(action) { };
+		~AnimationActionTime() { };
 	};
 
 	// Animation that happens after a specified moment
@@ -58,18 +68,19 @@ namespace AnimateAnything
 		IAnimation<NumericType>& Animation;
 		void Play(NumericType t, NumericType t0) override { if (Start <= t && t < Finish) Animation.Play(t - Start, t0 - Start); }
 		AnimationBetween(NumericType start, NumericType finish, IAnimation<NumericType>& action) : Start(start), Finish(finish), Animation(action) { }
+		AnimationBetween(NumericType start, NumericType finish, IAnimation<NumericType>* action) : Start(start), Finish(finish), Animation(*action) { }
 		~AnimationBetween() { }
 	};
 
 	// Skip part of the animation
-	template<typename NumericType> class AnimationOffset : public IAnimation<NumericType>
+	template<typename NumericType> class AnimationSeek : public IAnimation<NumericType>
 	{
 	public:
 		NumericType Skip;
 		IAnimation<NumericType>& Animation;
 		void Play(NumericType t, NumericType t0) override { Animation.Play(t + Skip, t0 + Skip); }
-		AnimationOffset(NumericType skip, IAnimation<NumericType>& action) : Skip(skip), Animation(action) { }
-		~AnimationOffset() { }
+		AnimationSeek(NumericType skip, IAnimation<NumericType>& action) : Skip(skip), Animation(action) { }
+		~AnimationSeek() { }
 	};
 
 	// An event is only triggered once, detection is performed based on t and t0
@@ -84,44 +95,55 @@ namespace AnimateAnything
 	};
 
 	// Scale the timeunit by a constant
-	template<typename NumericType> class AnimationTimestretch : public IAnimation<NumericType>
+	template<typename NumericType> class AnimationStretch : public IAnimation<NumericType>
 	{
 	public:
 		NumericType Scale;
 		IAnimation<NumericType>& Animation;
 		void Play(NumericType t, NumericType t0) override { Animation.Play(t*Scale, t0*Scale); }
-		AnimationTimestretch(NumericType scale, IAnimation<NumericType>& action) : Scale(scale), Animation(action) { }
-		~AnimationTimestretch() { }
+		AnimationStretch(NumericType scale, IAnimation<NumericType>& action) : Scale(scale), Animation(action) { }
+		~AnimationStretch() { }
 	};
 
 	// Alter timeline using custom lambda function
-	template<typename NumericType> class AnimationTransform : public IAnimation<NumericType>
+	template<typename NumericType> class AnimationTimeTransform : public IAnimation<NumericType>
 	{
 	public:
 		std::function<NumericType(NumericType)> Transform;
 		IAnimation<NumericType>& Animation;
 		void Play(NumericType t, NumericType t0) override { Animation.Play(Transform(t), Transform(t0)); }
-		AnimationTransform(std::function<NumericType(NumericType)> transform, IAnimation<NumericType>& action) : Transform(transform), Animation(action) { }
-		~AnimationTransform() { }
+		AnimationTimeTransform(std::function<NumericType(NumericType)> transform, IAnimation<NumericType>& action) : Transform(transform), Animation(action) { }
+		~AnimationTimeTransform() { }
 	};
 
 	// Run multiple animations
-	template<typename NumericType> class AnimationComposite : public IAnimation<NumericType>
+	template<typename NumericType> class AnimationParallel : public IAnimation<NumericType>
 	{
 	public:
 		std::vector<IAnimation<NumericType>*> Animations;
 		void Play(NumericType t, NumericType t0) override { for (auto& animation : Animations) animation->Play(t, t0); }
-		AnimationComposite() { }
+		AnimationParallel() { }
 
-		template<typename H> AnimationComposite(H& item)
+		template<typename H> AnimationParallel(H& item)
 		{
 			Animations.push_back(&item);
 		}
 
-		template<typename H, typename... T> AnimationComposite(H& item, T&... rest) :
-			AnimationComposite(rest...)
+		template<typename H, typename... T> AnimationParallel(H& item, T&... rest) :
+			AnimationParallel(rest...)
 		{
 			Animations.push_back(&item);
+		}
+
+		template<typename H> AnimationParallel(H* item)
+		{
+			Animations.push_back(item);
+		}
+
+		template<typename H, typename... T> AnimationParallel(H* item, T*... rest) :
+			AnimationParallel(rest...)
+		{
+			Animations.push_back(item);
 		}
 
 		void Add(IAnimation<NumericType>& item)
@@ -129,14 +151,122 @@ namespace AnimateAnything
 			Animations.push_back(&item);
 		}
 
-		~AnimationComposite() { }
+		void Add(IAnimation<NumericType>* item)
+		{
+			Animations.push_back(item);
+		}
+
+		~AnimationParallel() { }
 	};
 
 	// TODO loop
 
-	// Builder / Container Class
-	template<typename NumericType> class AnimateAnything
+	// Container class builds animations, stores animations and manages memory so that you don't have to
+	template<typename NumericType> class Container
 	{
-		// TODO
+	private:
+
+		// a vector containing all the animations in this container
+		std::vector<IAnimation<NumericType>*> ownedAnimations;
+
+		// make an animation node and convert it to stuff
+		template<typename Type, typename ...Args> Type* MakeNode(Args... args)
+		{
+			Type* node = new Type(args...);
+			ownedAnimations.push_back(node);
+			return node;
+		}
+
+		// Append  - general case
+		template<typename H, typename ...T> void Append(AnimationParallel<NumericType>* target, H first, T... rest)
+		{
+			target->Add(Parallel(first));
+			Append(target, rest...);
+		}
+
+		// Append - stop condition
+		template<typename H, typename ...T> void Append(AnimationParallel<NumericType>* target, H first)
+		{
+			target->Add(Parallel(first));
+			// no more recursive call
+		}
+
+	public:
+		
+		// Parallel with 1 parameter, degenrate case, only one IAnimation node, return node
+		IAnimation<NumericType>* Parallel(IAnimation<NumericType>* node)
+		{
+			return node;
+		}
+
+		// Parallel with 1 parameter, degenerate case, only one lambda
+		IAnimation<NumericType>* Parallel(std::function<void(NumericType)> action)
+		{
+			return MakeNode<AnimationActionTime<NumericType>>(action);
+		}
+
+		// Parallel with 1 parameter, degenerate case, only one lambda without param
+		IAnimation<NumericType>* Parallel(std::function<void(void)> action)
+		{
+			return MakeNode<AnimationActionVoid<NumericType>>(action);
+		}
+
+		// Parallel with 2 or more prameters
+		template<typename H1, typename H2, typename ...Tail> IAnimation<NumericType>* Parallel(H1 first, H2 second, Tail... rest)
+		{
+			auto node = MakeNode<AnimationParallel<NumericType>>();
+			Append(node, first, second, rest...);
+			return node;
+		}
+
+		// Animation between 2 points in time
+		template<typename ...Args> IAnimation<NumericType>* Between(NumericType start, NumericType finish, Args... args)
+		{
+			return MakeNode<AnimationBetween<NumericType>>(start, finish, Parallel(args...));
+		}
+
+		// Animation before a specific point in time
+		template<typename ...Args> IAnimation<NumericType>* Before(NumericType moment, NumericType finish, Args... args)
+		{
+			return MakeNode<AnimationBefore<NumericType>>(moment, Parallel(args...));
+		}
+
+		// Animation before a specific point in time
+		template<typename ...Args> IAnimation<NumericType>* After(NumericType moment, NumericType finish, Args... args)
+		{
+			return MakeNode<AnimationAfter<NumericType>>(moment, Parallel(args...));
+		}
+
+		// Animation before a specific point in time
+		template<typename ...Args> IAnimation<NumericType>* Event(NumericType moment, NumericType finish, Args... args)
+		{
+			return MakeNode<AnimationEvent<NumericType>>(moment, Parallel(args...));
+		}
+
+		// Stretch
+		template<typename ...Args> IAnimation<NumericType>* Stretch(NumericType amount, NumericType finish, Args... args)
+		{
+			return MakeNode<AnimationStretch<NumericType>>(amount, Parallel(args...));
+		}
+
+		// Skip part of animation
+		template<typename ...Args> IAnimation<NumericType>* Seek(NumericType amount, NumericType finish, Args... args)
+		{
+			return MakeNode<AnimationSeek<NumericType>>(amount, Parallel(args...));
+		}
+
+		// Custom time transform for an animation
+		template<typename ...Args> IAnimation<NumericType>* TimeTransform(std::function<NumericType(NumericType)> transform, NumericType finish, Args... args)
+		{
+			return MakeNode<AnimationTimeTransform<NumericType>>(transform, Parallel(args...));
+		}
+
+		~Container()
+		{
+			for(auto node : ownedAnimations)
+			{
+				delete node;
+			}
+		}
 	};
 }
